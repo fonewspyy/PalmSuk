@@ -18,13 +18,32 @@ class DetectionPicture extends GetView<DetectionController> {
         if (controller.isInitialized.value == false) {
           return Center(child: CircularProgressIndicator());
         } else {
-          return Container(
-            child: Stack(
-              children: [CameraPreview(controller.cameraController)],
-            ),
+          return Stack(
+            children: [
+              CameraPreview(controller.cameraController),
+              Positioned(
+                right: 10,
+                bottom: 30,
+                child: Container(
+                  padding: EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: PBlack.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Obx(
+                    () => Text(
+                      controller.result.value,
+                      style: TextStyle(color: PWhite, fontSize: 20),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           );
         }
       }),
+      floatingActionButton: FloatingActionButton(onPressed: (){controller.takePicture();},
+      child: Icon(Icons.camera_alt),),
     );
   }
 }

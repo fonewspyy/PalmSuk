@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 const Color PGreen = Color.fromARGB(255, 11, 226, 133);
 const Color PRed = Color(0xFFB00020);
+const Color PBlue = Color.fromARGB(255, 30, 54, 213);
 
 const Color PBlack = Color(0xFF000000);
 const Color PGray = Color.fromARGB(255, 106, 104, 104);

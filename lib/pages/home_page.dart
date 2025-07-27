@@ -25,13 +25,13 @@ class HomePage extends StatelessWidget {
           children: [
             ElevatedButton(
               onPressed: () {
-                Get.toNamed(AppRoutes.streamPage);
+                Get.toNamed(AppRoutes.streamPage, arguments: {"type":"streaming"});
               },
               child: Text('Start Detection'),
             ),
             ElevatedButton(
               onPressed: () {
-                Get.toNamed(AppRoutes.detectionPage);
+                Get.toNamed(AppRoutes.detectionPage, arguments: {"type":"picture"});
               },
               child: Text('Take Picture'),
             ),
