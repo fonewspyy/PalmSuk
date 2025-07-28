@@ -1,5 +1,6 @@
 name: palm_app
 description: "A new Flutter project."
+
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -37,6 +38,7 @@ dependencies:
   camera: ^0.11.2
   flutter_tflite: ^1.0.1
   get: ^4.7.2
+
 
 dev_dependencies:
   flutter_test:
@@ -91,3 +93,4 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+

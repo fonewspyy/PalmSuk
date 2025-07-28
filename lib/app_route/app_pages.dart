@@ -7,12 +7,12 @@ import 'package:palm_app/pages/stream_detection_page.dart';
 
 class AppPages {
   static final pages = [
-    GetPage(name: AppRoutes.homePage, page: () => const HomePage()),
-    GetPage(
-      binding: DetectionBinding(),
-      name: AppRoutes.detectionPage,
-      page: () => DetectionPicture(),
-    ),
+    // GetPage(name: AppRoutes.homePage, page: () => const HomePage()),
+    // GetPage(
+    //   binding: DetectionBinding(),
+    //   name: AppRoutes.detectionPage,
+    //   page: () => DetectionPicture(),
+    // ),
     GetPage(
       name: AppRoutes.streamPage,
       binding: DetectionBinding(),
