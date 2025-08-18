@@ -20,9 +20,9 @@ class AppPages {
       page: () => const StreanDetectionPage(),
     ),
     // เส้นทางสำหรับหน้า PalmReportPage
-    GetPage(
-      name: AppRoutes.palmReportPage,  // ตั้งชื่อเส้นทางใน AppRoutes
-      page: () => const PalmReportPage(),  // เชื่อมโยงไปยัง PalmReportPage
-    ),
+    // GetPage(
+    //   name: AppRoutes.palmReportPage,  // ตั้งชื่อเส้นทางใน AppRoutes
+    //   page: () => const PalmReportPage(),  // เชื่อมโยงไปยัง PalmReportPage
+    // ),
   ];
 }

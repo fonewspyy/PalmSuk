@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter_tflite/flutter_tflite.dart';
 import 'package:get/get.dart';
-import 'package:palm_app/database_helper.dart';
 
 class DetectionController extends GetxController {
   RxBool isStreaming = false.obs;
@@ -15,42 +14,9 @@ class DetectionController extends GetxController {
   RxDouble imageHeight = 0.0.obs;
   RxDouble imageWidth = 0.0.obs;
 
-  RxInt laptopCount = 0.obs;
-  RxInt phoneCount = 0.obs;
+  RxInt ripeCount = 0.obs;
+  RxInt unripeCount = 0.obs;
   RxBool isCameraRunning = false.obs;
-
-  // เพิ่มตัวแปรใหม่
-  RxList<Map<String, dynamic>> palmRecords = <Map<String, dynamic>>[].obs; // รายการเก็บข้อมูลการตรวจจับ
-  RxInt totalLaptopCount = 0.obs; // ผลรวม laptop
-  RxInt totalKeyboardCount = 0.obs; // ผลรวม keyboard
-
-  void filterByDate(String date) {
-    // กรองข้อมูลให้แสดงเฉพาะวันที่ที่ตรงกับการเลือก
-    palmRecords.value = palmRecords.where((record) {
-      return record['date'] == date;
-    }).toList();
-  }
-  final DatabaseHelper _dbHelper = DatabaseHelper();
-
-  // ฟังก์ชันบันทึกข้อมูลเมื่อกดปุ่ม SAVE
-  void savePalmData(String date) async {
-    Map<String, dynamic> data = {
-      'date': date,
-      'laptop_count': laptopCount.value,
-      'keyboard_count': phoneCount.value,
-    };
-
-    // บันทึกข้อมูลลงฐานข้อมูล
-    await _dbHelper.insertDetectionData(data);
-
-    // ดึงข้อมูลล่าสุดจากฐานข้อมูล
-    palmRecords.value = await _dbHelper.getDetectionData();
-  }
-
-  // ฟังก์ชันกรองข้อมูลตามวันที่
-  void filterDataByDate(String date) async {
-    palmRecords.value = await _dbHelper.getDetectionDataByDate(date);
-  }
 
   @override
   void onInit() async {
@@ -70,8 +36,8 @@ class DetectionController extends GetxController {
 
   Future loadDataModel() async {
     await Tflite.loadModel(
-      model: "assets/models/ssd_mobilenet.tflite",
-      labels: "assets/models/ssd_mobilenet.txt",
+      model: "assets/models/palm.tflite",
+      labels: "assets/models/palm.txt",
     );
   }
 
@@ -106,41 +72,28 @@ class DetectionController extends GetxController {
         asynch: true,
       ))!;
 
+      
+
       // Reset count
-      laptopCount.value = 0;
-      phoneCount.value = 0;
+      ripeCount.value = 0;
+      unripeCount.value = 0;
 
       // // 🔽 วนลูปเพื่อเช็กว่าตรวจเจอ class ไหน
       for (var re in recognitions) {
         if (re["confidenceInClass"] >= 0.5) {
-          if (re["detectedClass"] == "laptop") {
-            laptopCount.value++;
-          } else if (re["detectedClass"] == "keyboard") {
-            phoneCount.value++;
+          if (re["detectedClass"] == "ripe") {
+            ripeCount.value++;
+          } else if (re["detectedClass"] == "unripe") {
+            unripeCount.value++;
           }
         }
       }
+
       // print(recognitions.value);
     } catch (e) {
     } finally {
       isprocessing = false;
     }
-  }
-  // ฟังก์ชันบันทึกข้อมูลเมื่อกดปุ่ม SAVE
-  void savePalmData() {
-    String currentDate = DateTime.now().toString().split(' ')[0]; // เก็บวันที่ปัจจุบัน (ปี-เดือน-วัน)
-
-    // เพิ่มข้อมูลใหม่ลงในรายการ
-    palmRecords.insert(0, {
-      'date': currentDate,
-      'laptop': laptopCount.value,  // laptop
-      'keyboard': phoneCount.value, // keyboard
-      'timestamp': DateTime.now().toString(),  // เวลาที่บันทึก
-    });
-
-    // คำนวณผลรวม
-    totalLaptopCount.value += laptopCount.value;
-    totalKeyboardCount.value += phoneCount.value;
   }
 
   // ปุ่ม SEARCH เปิด-ปิดกล้อง
@@ -180,7 +133,7 @@ class DetectionController extends GetxController {
   //   try {
   //     var file = await cameraController.takePicture();
   //     File image = File(file.path);
-  //     if (isprocessing) return;.
+  //     if (isprocessing) return;
   //     isprocessing = true;
   //     await Future.delayed(const Duration(seconds: 1));
   //     result.value = '';
