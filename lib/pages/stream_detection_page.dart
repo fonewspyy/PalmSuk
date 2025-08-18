@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:palm_app/color/colors.dart';
 import 'package:palm_app/controller/detection_controller.dart';
+import 'package:palm_app/pages/palm_report_page.dart';
 
 class StreanDetectionPage extends GetView<DetectionController> {
   const StreanDetectionPage({super.key});
@@ -64,15 +65,33 @@ class StreanDetectionPage extends GetView<DetectionController> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'PALM SUK',
-          style: TextStyle(
-            color: PWhite,
-            fontSize: 25,
-            fontWeight: FontWeight.bold,
+        title: Padding(
+          padding: const EdgeInsets.only(left: 20),
+          child: Text(
+            'PALM SUK',
+            style: TextStyle(
+              color: PWhite,
+              fontSize: 25,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
         backgroundColor: PBrown,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 20),
+            child: IconButton(
+              icon: Icon(
+                Icons.content_paste_go_rounded,
+                color: PWhite,
+                size: 32,
+              ),
+              onPressed: () {
+                Get.to(() => PalmReportPage()); // ไปยังหน้ารายงานผลปาล์ม
+              },
+            ),
+          ),
+        ],
       ),
       body: Obx(
         () => Column(
@@ -109,7 +128,6 @@ class StreanDetectionPage extends GetView<DetectionController> {
                                 } else {
                                   return Image.asset(
                                     'assets/models/palmsuk1.jpg', // เปลี่ยนเป็น path ของ icon รูปกล้องที่คุณเตรียมไว้
-                                    
                                   );
                                 }
                               }),
@@ -129,7 +147,7 @@ class StreanDetectionPage extends GetView<DetectionController> {
                 children: [
                   Container(color: Pbgcolor),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 50),
+                    padding: const EdgeInsets.symmetric(horizontal: 40, ),
                     margin: const EdgeInsets.only(
                       top: 0,
                       left: 40,
@@ -139,12 +157,13 @@ class StreanDetectionPage extends GetView<DetectionController> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(16),
+                      
                     ),
                     child: Column(
                       children: [
                         Center(
                           child: Padding(
-                            padding: EdgeInsets.only(top: 25, bottom: 15),
+                            padding: EdgeInsets.only(top: 25, bottom: 15,),
                             child: Text(
                               'ผลการวิเคราะห์',
                               style: TextStyle(
@@ -167,43 +186,81 @@ class StreanDetectionPage extends GetView<DetectionController> {
                           PRed,
                           controller.phoneCount.value,
                         ),
-                        GestureDetector(
-                          onTap: () => controller.toggleCamera(),
-                          child: Obx(
-                            () => Container(
-                              margin: EdgeInsets.symmetric(vertical: 25),
-                              // padding: EdgeInsets.symmetric(vertical: 10),
-                              width: 260,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: PBrown,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    controller.isCameraRunning.value
-                                        ? Icons.videocam_off
-                                        : Icons.videocam,
-                                    color: Colors.white,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          
+                          children: [
+                            // ให้ปุ่มอยู่ตรงกลาง
+                            GestureDetector(
+                              onTap: () => controller.toggleCamera(),
+                              child: Obx(
+                                () => Container(
+                                  margin: EdgeInsets.symmetric(vertical: 25),
+                                  // padding: EdgeInsets.symmetric(vertical: 10),
+                                  width: 120,
+                                  height: 50,
+                                  decoration: BoxDecoration(
+                                    color: PBrown,
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    controller.isCameraRunning.value
-                                        ? 'STOP DETECT'
-                                        : 'START DETECT',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        controller.isCameraRunning.value
+                                            ? Icons.videocam_off
+                                            : Icons.videocam,
+                                        color: Colors.white,
+                                      ),
+                                      SizedBox(width: 10),
+                                      Text(
+                                        controller.isCameraRunning.value
+                                            ? 'STOP'
+                                            : 'START',
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
                             ),
-                          ),
+                            GestureDetector(
+                              onTap: () => controller.savePalmData(),
+                              child: Container(
+                                margin: EdgeInsets.symmetric(
+                                  vertical: 25,
+                                  // horizontal: 10,
+                                ),
+                                width: 120,
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  color: PBrown,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.save, color: Colors.white),
+                                    SizedBox(width: 10),
+                                    Text(
+                                      'SAVE',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
