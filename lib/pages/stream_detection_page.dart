@@ -1,4 +1,4 @@
-import 'dart:math' as math; // <-- เพิ่มถ้ายังไม่มี
+import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -18,24 +18,21 @@ class StreanDetectionPage extends GetView<DetectionController> {
       }
     }
 
-    // 🔧 รับขนาด overlay จริง + คำนวณ BoxFit.cover mapping ให้ bbox วาดตรง
+    // วาดกล่องจาก normalized rect บนพื้นที่ overlay จริง (9:16)
     List<Widget> renderBoxes(Size overlaySize) {
       if (controller.imageHeight.value == 0.0 || controller.imageWidth.value == 0.0) {
         return const [];
       }
-
-      // ขนาดวิดีโอจากกล้อง (ก่อนการวาดลงจอ)
       final previewSize = controller.cameraController.value.previewSize;
       if (previewSize == null) return const [];
 
       final double pw = previewSize.width;
       final double ph = previewSize.height;
 
-      // ขนาดพื้นที่ที่แสดงพรีวิวจริงบนจอ (overlay)
       final double W = overlaySize.width;
       final double H = overlaySize.height;
 
-      // BoxFit.cover: scale = max(W/pw, H/ph), แล้วเกิด offset dx/dy
+      // BoxFit.cover mapping
       final double scale = math.max(W / pw, H / ph);
       final double dw = pw * scale;
       final double dh = ph * scale;
@@ -44,16 +41,14 @@ class StreanDetectionPage extends GetView<DetectionController> {
 
       return controller.recognitions.map<Widget>((re) {
         final conf = (re["confidenceInClass"] as num).toDouble();
-        if (conf < controller.minConf) return const SizedBox.shrink();
+        if (conf < 0.5) return const SizedBox.shrink();
 
         final rect = re["rect"] as Map; // {x,y,w,h} normalized 0..1
-        // แปลง normalized -> พิกเซลในภาพหลัง cover (dw x dh) แล้วชดเชย dx/dy
         final double left = dx + (rect["x"] as num).toDouble() * dw;
         final double top  = dy + (rect["y"] as num).toDouble() * dh;
         final double w    = (rect["w"] as num).toDouble() * dw;
         final double h    = (rect["h"] as num).toDouble() * dh;
 
-        // ตัดขอบกันหลุด
         final double clampedLeft = left.clamp(0.0, W - 1);
         final double clampedTop  = top.clamp(0.0, H - 1);
         final double clampedW    = (clampedLeft + w > W) ? (W - clampedLeft) : w;
@@ -90,14 +85,16 @@ class StreanDetectionPage extends GetView<DetectionController> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('PALM SUK',
-            style: TextStyle(color: PWhite, fontSize: 25, fontWeight: FontWeight.bold)),
+        title: Text(
+          'PALM SUK',
+          style: TextStyle(color: PWhite, fontSize: 25, fontWeight: FontWeight.bold),
+        ),
         backgroundColor: PBrown,
       ),
       body: Obx(() {
         return Column(
           children: [
-            // 🔳 ครึ่งบน: กล้องขนาด "เดิม" (คง Expanded/padding/ClipRRect แบบที่คุณมี)
+            // 🔳 ครึ่งบน: กล้อง (overlay 9:16)
             Expanded(
               flex: 5,
               child: Container(
@@ -110,31 +107,41 @@ class StreanDetectionPage extends GetView<DetectionController> {
                       if (!controller.isInitialized.value) {
                         return Image.asset('assets/models/palmsuk1.jpg', fit: BoxFit.cover);
                       }
-                      // ⬇️ ไม่บังคับ AspectRatio — คง "ขนาดเดิมของ UI" ตามพื้นที่ที่มี
+                      // ล็อกพื้นที่พรีวิวให้เป็น 9:16 เสมอ แล้วให้ CameraPreview cover ข้างใน
                       return LayoutBuilder(
                         builder: (_, constraints) {
-                          final overlayW = constraints.maxWidth;
-                          final overlayH = constraints.maxHeight; // << ใช้เต็มพื้นที่เดิม
+                          final double maxW = constraints.maxWidth;
+                          final double maxH = constraints.maxHeight;
 
-                          return SizedBox(
-                            width: overlayW,
-                            height: overlayH,
-                            child: Stack(
-                              children: [
-                                // แสดงกล้องแบบ cover เหมือนเดิม
-                                Positioned.fill(
-                                  child: FittedBox(
-                                    fit: BoxFit.cover,
-                                    child: SizedBox(
-                                      width: controller.cameraController.value.previewSize?.width ?? overlayW,
-                                      height: controller.cameraController.value.previewSize?.height ?? overlayH,
-                                      child: CameraPreview(controller.cameraController),
+                          const double targetAspect = 9 / 16; // width / height
+                          double overlayW = maxW;
+                          double overlayH = overlayW / targetAspect; // H = W / (W/H)
+                          if (overlayH > maxH) {
+                            overlayH = maxH;
+                            overlayW = overlayH * targetAspect;
+                          }
+
+                          return Center(
+                            child: SizedBox(
+                              width: overlayW,
+                              height: overlayH,
+                              child: Stack(
+                                children: [
+                                  // กล้องแบบ cover ในกรอบ 9:16
+                                  Positioned.fill(
+                                    child: FittedBox(
+                                      fit: BoxFit.cover,
+                                      child: SizedBox(
+                                        width: controller.cameraController.value.previewSize?.width ?? overlayW,
+                                        height: controller.cameraController.value.previewSize?.height ?? overlayH,
+                                        child: CameraPreview(controller.cameraController),
+                                      ),
                                     ),
                                   ),
-                                ),
-                                // วาด bbox โดย map ด้วยสูตร BoxFit.cover ข้างบน
-                                ...renderBoxes(Size(overlayW, overlayH)),
-                              ],
+                                  // bbox ตามสูตร cover
+                                  ...renderBoxes(Size(overlayW, overlayH)),
+                                ],
+                              ),
                             ),
                           );
                         },
@@ -161,7 +168,7 @@ class StreanDetectionPage extends GetView<DetectionController> {
                         Text('ผลการวิเคราะห์',
                             style: TextStyle(color: PBrown, fontWeight: FontWeight.bold, fontSize: 25)),
                         const SizedBox(height: 15),
-                        _buildResultRow('ผลปาล์มสุก', PGreen, controller.ripeCount.value),
+                        _buildResultRow('ผลปาล์มสุก', PGreen, controller.ripeCount.value),   // ✅ ใช้ ripeCount ให้ถูก
                         const SizedBox(height: 10),
                         _buildResultRow('ผลปาล์มดิบ', PRed, controller.unripeCount.value),
                         GestureDetector(
@@ -205,20 +212,13 @@ class StreanDetectionPage extends GetView<DetectionController> {
         Expanded(
           child: Text(
             '$label : $count',
-            style: const TextStyle(
-              fontSize: 16,
-              color: PGray,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 16, color: PGray, fontWeight: FontWeight.bold),
           ),
         ),
         Container(
           width: 20,
           height: 20,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(4),
-          ),
+          decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4)),
         ),
       ],
     );
