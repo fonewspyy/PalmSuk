@@ -1,7 +1,7 @@
-import 'dart:io';
 import 'package:camera/camera.dart';
-import 'package:flutter_tflite/flutter_tflite.dart';
 import 'package:get/get.dart';
+import '../services/yolo_v8_nms.dart';
+import 'package:flutter/foundation.dart';
 
 class DetectionController extends GetxController {
   RxBool isStreaming = false.obs;
@@ -18,10 +18,15 @@ class DetectionController extends GetxController {
   RxInt unripeCount = 0.obs;
   RxBool isCameraRunning = false.obs;
 
+  final _yolo = YoloV8Nms();
+  final double minConf = 0.30;
+  
   @override
   void onInit() async {
-    await loadDataModel();
-    // await initializeCamera();
+    await _yolo.load(
+      modelAsset: "assets/models/best_float16.tflite",
+      labelsAsset: "assets/models/palm.txt",
+    );
     super.onInit();
   }
 
@@ -31,123 +36,89 @@ class DetectionController extends GetxController {
       cameraController.stopImageStream();
     }
     cameraController.dispose();
+    _yolo.close();
     super.onClose();
-  }
-
-  Future loadDataModel() async {
-    await Tflite.loadModel(
-      model: "assets/models/palm.tflite",
-      labels: "assets/models/palm.txt",
-    );
   }
 
   Future initializeCamera() async {
     final cameras = await availableCameras();
-    cameraController = CameraController(cameras[0], ResolutionPreset.medium);
+    cameraController = CameraController(
+      cameras[0],
+      ResolutionPreset.medium,
+      imageFormatGroup: ImageFormatGroup.yuv420, // สำคัญ
+    );
     await cameraController.initialize();
     isInitialized.value = true;
-    // cameraController.startImageStream(ssDrunModeOnStreamFram);
   }
 
-  ssDrunModeOnStreamFram(CameraImage img) async {
-    if (isprocessing) return;
+  Future<void> _onStream(CameraImage img) async {
+    if (isprocessing || !_yolo.isReady) return;
     isprocessing = true;
-    await Future.delayed(const Duration(microseconds: 500));
-    result.value = "";
+
     try {
       imageHeight.value = img.height.toDouble();
       imageWidth.value = img.width.toDouble();
-      recognitions.value = (await Tflite.detectObjectOnFrame(
-        bytesList: img.planes.map((plan) {
-          return plan.bytes;
-        }).toList(),
-        model: 'SSDMobileNet',
-        imageHeight: img.height,
-        imageWidth: img.width,
-        imageMean: 127.5,
-        imageStd: 127.5,
-        rotation: 90,
-        numResultsPerClass: 2,
-        threshold: 0.1,
-        asynch: true,
-      ))!;
 
-      
+      final dets = await _yolo.runOnFrame(img);
+      recognitions.value = dets;
 
-      // Reset count
+      // 👇 LOG ชัด ๆ
+      if (kDebugMode) {
+        if (dets.isEmpty) {
+          print('[YOLO] no detections');
+        } else {
+          final top = dets.first;
+          print('[YOLO] N=${dets.length} '
+                'top=${top["detectedClass"]} '
+                'conf=${(top["confidenceInClass"] as double).toStringAsFixed(2)} '
+                'rect=${top["rect"]}');
+        }
+      }
+
+      // นับผล
       ripeCount.value = 0;
       unripeCount.value = 0;
-
-      // // 🔽 วนลูปเพื่อเช็กว่าตรวจเจอ class ไหน
-      for (var re in recognitions) {
-        if (re["confidenceInClass"] >= 0.5) {
-          if (re["detectedClass"] == "ripe") {
+      for (final re in dets) {
+        final cls = (re["detectedClass"] as String).toLowerCase();
+        final conf = (re["confidenceInClass"] as num).toDouble();
+        if (conf >= minConf) {
+          if (cls.contains("ripe")) {
             ripeCount.value++;
-          } else if (re["detectedClass"] == "unripe") {
+          } else if (cls.contains("unripe")) {
             unripeCount.value++;
           }
         }
       }
-
-      // print(recognitions.value);
-    } catch (e) {
+    } catch (e, st) {
+      if (kDebugMode) {
+        print('[YOLO][ERR] $e\n$st');
+      }
     } finally {
       isprocessing = false;
     }
   }
 
-  // ปุ่ม SEARCH เปิด-ปิดกล้อง
   Future<void> toggleCamera() async {
-    if (isInitialized.value) {
+    if (!isInitialized.value) {
+      await initializeCamera();
+      isCameraRunning.value = true;
+      try {
+        await cameraController.startImageStream(_onStream);
+        isStreaming.value = true;
+      } catch (e) {
+        isCameraRunning.value = false;
+        rethrow;
+      }
+    } else {
       // ปิดกล้อง
       if (isStreaming.value) {
-        try {
-          await cameraController.stopImageStream();
-          isStreaming.value = false;
-        } catch (e) {
-          print("⚠️ stopImageStream ล้มเหลว: $e");
-        }
+        await cameraController.stopImageStream();
+        isStreaming.value = false;
       }
-
       await cameraController.dispose();
       isInitialized.value = false;
       isCameraRunning.value = false;
-    } else {
-      // เปิดกล้อง
-      final cameras = await availableCameras();
-      cameraController = CameraController(cameras[0], ResolutionPreset.medium);
-      await cameraController.initialize();
-      isInitialized.value = true;
-      isCameraRunning.value = true;
-
-      try {
-        await cameraController.startImageStream(ssDrunModeOnStreamFram);
-        isStreaming.value = true;
-      } catch (e) {
-        print("⚠️ startImageStream ล้มเหลว: $e");
-      }
     }
   }
 
-  // takePicture() async {
-  //   try {
-  //     var file = await cameraController.takePicture();
-  //     File image = File(file.path);
-  //     if (isprocessing) return;
-  //     isprocessing = true;
-  //     await Future.delayed(const Duration(seconds: 1));
-  //     result.value = '';
-  //     var Recognitions = await Tflite.detectObjectOnImage(
-  //       path: image.path,
-  //       numResultsPerClass: 1,
-  //     );
-  //     for (var recognition in Recognitions!) {
-  //       result.value +=
-  //           "${recognition["detectedClass"]} - ${recognition["confidenceInClass"]} \n";
-  //     }
-  //   } catch (e) {
-  //   } finally {
-  //     isprocessing = false;
-  //   }
-  // }
 }
