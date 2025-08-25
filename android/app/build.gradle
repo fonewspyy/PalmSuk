@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace "com.example.palm_app"
-    compileSdk flutter.compileSdkVersion
+    compileSdkVersion 36
     ndkVersion "27.0.12077973"
 
     aaptOptions {
@@ -15,17 +15,17 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
     }
 
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "1.8"
     }
 
     defaultConfig {
         applicationId "com.example.palm_app"
-        minSdk flutter.minSdkVersion
+        minSdkVersion flutter.minSdkVersion
         targetSdk flutter.targetSdkVersion
         versionCode flutter.versionCode
         versionName flutter.versionName

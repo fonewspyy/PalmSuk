@@ -19,32 +19,34 @@ class StreanDetectionPage extends GetView<DetectionController> {
       }
     }
 
-    Size size = MediaQuery.of(context).size;
     List<Widget> renderBoxes(Size screen) {
-      if (controller.imageHeight.value == 0.0 ||
-          controller.imageWidth.value == 0.0)
+      // แก้ไขจาก imageHeight/imageWidth เป็น imgH/imgW
+      if (controller.imgH.value == 0.0 ||
+          controller.imgW.value == 0.0) {
         return [];
-      double factorX = screen.width;
-      double factorY =
-          controller.imageWidth / controller.imageWidth.value * screen.width;
+      }
 
-      return controller.recognitions!.map((re) {
+      // แก้ไขจาก imageHeight/imageWidth เป็น imgH/imgW
+      double factorX = screen.width / controller.imgW.value;
+      double factorY = screen.height / controller.imgH.value;
+
+      return controller.recognitions.map((re) {
         if (re["confidenceInClass"] as double >= 0.5) {
           return Positioned(
-            left: (re["rect"]["x"] * factorX),
-            top: (re["rect"]["y"] * factorY),
-            width: (re["rect"]["w"] * factorX),
-            height: (re["rect"]["h"] * factorY),
+            left: re["rect"]["x"] * factorX,
+            top: re["rect"]["y"] * factorY,
+            width: re["rect"]["w"] * factorX,
+            height: re["rect"]["h"] * factorY,
             child: Container(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.all(Radius.circular(10)),
+                borderRadius: const BorderRadius.all(Radius.circular(10)),
                 border: Border.all(
                   color: getBorderColor(re["detectedClass"]),
                   width: 2,
                 ),
               ),
               child: Text(
-                "${re["detectedClass"]} ${(re["confidenceInClass"] * 100).toString()}",
+                "${re["detectedClass"]} ${(re["confidenceInClass"] * 100).toStringAsFixed(0)}%",
                 style: TextStyle(
                   background: Paint()
                     ..color = getBorderColor(re["detectedClass"]),
@@ -55,10 +57,14 @@ class StreanDetectionPage extends GetView<DetectionController> {
             ),
           );
         } else {
-          return Text("");
+          return const SizedBox.shrink();
         }
       }).toList();
     }
+
+    // ต้องดึงขนาดของหน้าจอมาใช้ก่อนใน build method
+    final Size size = MediaQuery.of(context).size;
+
 
     return Scaffold(
       appBar: AppBar(
@@ -101,13 +107,12 @@ class StreanDetectionPage extends GetView<DetectionController> {
                                       CameraPreview(
                                         controller.cameraController,
                                       ),
-                                      ...renderBoxes(size),
+                                      ...renderBoxes(size), // ส่ง size เข้าไป
                                     ],
                                   );
                                 } else {
                                   return Image.asset(
                                     'assets/models/palmsuk1.jpg', // เปลี่ยนเป็น path ของ icon รูปกล้องที่คุณเตรียมไว้
-                                    
                                   );
                                 }
                               }),
@@ -157,13 +162,13 @@ class StreanDetectionPage extends GetView<DetectionController> {
                         _buildResultRow(
                           'ผลปาล์มสุก',
                           PGreen,
-                          controller.unripeCount.value,
+                          controller.ripeCount.value, // ใช้ ripeCount
                         ),
                         const SizedBox(height: 10),
                         _buildResultRow(
                           'ผลปาล์มดิบ',
                           PRed,
-                          controller.unripeCount.value,
+                          controller.unripeCount.value, // ใช้ unripeCount
                         ),
                         GestureDetector(
                           onTap: () => controller.toggleCamera(),
