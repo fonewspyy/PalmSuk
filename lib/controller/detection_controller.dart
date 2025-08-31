@@ -1,58 +1,56 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:get/get.dart';
+import 'package:tflite_flutter/tflite_flutter.dart';
 import 'dart:math' as math;
 
 class DetectionController extends GetxController {
-  // =============== Camera ===============
+  // ===== Camera =====
   RxBool isStreaming = false.obs;
   late CameraController cameraController;
   RxBool isInitialized = false.obs;
   RxBool isCameraRunning = false.obs;
 
-  // =============== Inference ===============
-  bool _busy = false;
-  Interpreter? interpreter;
-
-  TensorType? _inputType;
-  TensorType? _outputType;
-
-  // Model input size
+  // ===== Inference =====
+  Interpreter? _interp;
+  TensorType? _inType, _outType;
   int? inW, inH;
-
-  // Output layout
   int? valuesPerDet, numDet;
-  bool _layoutCHW = false; // true => [1,6,N]; false => [1,N,6]
-
-  // Quant params (fallbacks)
-  double _inScale = 1.0 / 255.0;
+  bool _layoutCHW = false; // true => [1,6,N], false => [1,N,6]
+  double _inScale = 1.0 / 255.0; // default for float
   int _inZero = 0;
   double _outScale = 1.0;
   int _outZero = 0;
 
-  // Preallocated input buffers
+  // prealloc input
   List<List<List<List<double>>>>? _inputF; // float32/float16
   List<List<List<List<int>>>>? _inputI;    // int8/uint8
 
-  // Cached resize maps
+  // resize maps cache
   List<int>? _mapX, _mapY, _mapXuv, _mapYuv;
   int _srcW = -1, _srcH = -1;
 
-  // Frame skipper (1 = ทุกเฟรม)
-  int processEveryN = 1;
+  // throttling
+  int processEveryN = 1; // 1 = ทุกเฟรม (ถ้าอยากเบา CPU ตั้งเป็น 2/3)
   int _frameIdx = 0;
+  bool _busy = false;
 
-  // Labels
-  List<String> labels = [];
+  // labels
+  List<String> labels = const [];
 
-  // Results/state
+  // results/state
   RxList<Map<String, dynamic>> recognitions = <Map<String, dynamic>>[].obs;
   RxInt ripeCount = 0.obs;
   RxInt unripeCount = 0.obs;
   RxDouble imgW = 0.0.obs;
   RxDouble imgH = 0.0.obs;
+  RxString summaryText = ''.obs;
+
+  // thresholds
+  double confThresh = 0.50;
+  double iouThresh = 0.45;
+  int topK = 50;
 
   @override
   Future<void> onInit() async {
@@ -71,100 +69,103 @@ class DetectionController extends GetxController {
       await cameraController.dispose();
     }
     try {
-      interpreter?.close();
+      _interp?.close();
     } catch (_) {}
     super.onClose();
   }
 
-  // =============== Model loading ===============
+  // ===== Model =====
   Future<void> _loadModelAndLabels() async {
+    // 1) try XNNPACK
     try {
-      final options = InterpreterOptions()..threads = 4;
+      final opt = InterpreterOptions()..threads = 4;
       try {
-        options.addDelegate(XNNPackDelegate()); // best on CPU
+        opt.addDelegate(XNNPackDelegate());
       } catch (_) {}
-
-      interpreter = await Interpreter.fromAsset(
-        'assets/models/best_int8.tflite',
-        options: options,
+      _interp = await Interpreter.fromAsset(
+        'assets/models/best_int8.tflite', // รองรับทั้ง float / int8
+        options: opt,
       );
-      debugPrint('✅ TFLite model loaded');
-
-      final labelStr = await rootBundle.loadString('assets/models/palm.txt');
-      labels = labelStr
-          .split('\n')
-          .map((e) => e.trim())
-          .where((e) => e.isNotEmpty)
-          .toList();
-      debugPrint('✅ Labels: $labels');
-
-      // Input tensor
-      final inTensor = interpreter!.getInputTensors().first;
-      _inputType = inTensor.type;
-      final inShape = inTensor.shape; // [1,H,W,3]
-      if (inShape.length != 4 || inShape[0] != 1 || inShape[3] != 3) {
-        throw Exception('Unexpected input shape: $inShape (expect [1,h,w,3])');
-      }
-      inH = inShape[1];
-      inW = inShape[2];
-
-      final inQ = inTensor.params;
-      if (inQ.scale != 0.0) _inScale = inQ.scale;
-      _inZero = inQ.zeroPoint;
-
-      // Output tensor
-      final outTensor = interpreter!.getOutputTensors().first;
-      _outputType = outTensor.type;
-      final outShape = outTensor.shape; // [1,6,N] or [1,N,6]
-      if (outShape.length != 3 || outShape[0] != 1) {
-        throw Exception('Unexpected output shape: $outShape');
-      }
-      if (outShape[1] == 6) {
-        _layoutCHW = true; valuesPerDet = outShape[1]; numDet = outShape[2];
-      } else if (outShape[2] == 6) {
-        _layoutCHW = false; valuesPerDet = outShape[2]; numDet = outShape[1];
-      } else {
-        throw Exception('Cannot find 6-dim per detection in output: $outShape');
-      }
-
-      final outQ = outTensor.params;
-      if (outQ.scale != 0.0) _outScale = outQ.scale;
-      _outZero = outQ.zeroPoint;
-
-      debugPrint('📥 Input: ${inW}x${inH}, type=$_inputType (scale=$_inScale, zp=$_inZero)');
-      debugPrint('📤 Output: layoutCHW=$_layoutCHW, N=$numDet, type=$_outputType (scale=$_outScale, zp=$_outZero)');
-
-      _preparePreallocatedInputs();
-    } catch (e, st) {
-      debugPrint('❌ Load model/labels failed: $e\n$st');
-      interpreter = null;
+    } catch (e) {
+      debugPrint('! XNNPACK failed ($e), fallback CPU only');
+      final opt = InterpreterOptions()..threads = 4;
+      _interp = await Interpreter.fromAsset(
+        'assets/models/best_int8.tflite',
+        options: opt,
+      );
     }
+    debugPrint('✅ TFLite model loaded');
+
+    // labels
+    final labelStr = await rootBundle.loadString('assets/models/palm.txt');
+    labels = labelStr
+        .split('\n')
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+
+    // input tensor
+    final inT = _interp!.getInputTensors().first;
+    _inType = inT.type;
+    final ishape = inT.shape; // [1,H,W,3]
+    if (ishape.length != 4 || ishape[0] != 1 || ishape[3] != 3) {
+      throw Exception('Unexpected input shape: $ishape (expect [1,h,w,3])');
+    }
+    inH = ishape[1];
+    inW = ishape[2];
+
+    final ip = inT.params;
+    if (ip.scale != 0.0) _inScale = ip.scale;
+    _inZero = ip.zeroPoint;
+
+    // output tensor
+    final outT = _interp!.getOutputTensors().first;
+    _outType = outT.type;
+    final oshape = outT.shape; // [1,6,N] or [1,N,6]
+    if (oshape.length != 3 || oshape[0] != 1) {
+      throw Exception('Unexpected output shape: $oshape');
+    }
+    if (oshape[1] == 6) {
+      _layoutCHW = true; valuesPerDet = oshape[1]; numDet = oshape[2];
+    } else if (oshape[2] == 6) {
+      _layoutCHW = false; valuesPerDet = oshape[2]; numDet = oshape[1];
+    } else {
+      throw Exception('Cannot find 6-dim per detection in output: $oshape');
+    }
+    final op = outT.params;
+    if (op.scale != 0.0) _outScale = op.scale;
+    _outZero = op.zeroPoint;
+
+    debugPrint('📥 Input: ${inW}x${inH}, type=$_inType (scale=$_inScale, zp=$_inZero)');
+    debugPrint('📤 Output: layoutCHW=$_layoutCHW, N=$numDet, type=$_outType (scale=$_outScale, zp=$_outZero)');
+
+    _preparePreallocatedInputs();
+
+    // **สำคัญ**: ไม่ทำ warm-up เพื่อเลี่ยง PAD crash
   }
 
   void _preparePreallocatedInputs() {
     if (inW == null || inH == null) return;
-    final isFloat = _inputType == TensorType.float32 || _inputType == TensorType.float16;
+    final isFloat = _inType == TensorType.float32 || _inType == TensorType.float16;
     if (isFloat) {
       _inputF = List.generate(
-        1,
-        (_) => List.generate(inH!, (_) => List.generate(inW!, (_) => List<double>.filled(3, 0.0))),
+        1, (_) => List.generate(inH!, (_) => List.generate(inW!, (_) => List<double>.filled(3, 0.0))),
       );
       _inputI = null;
     } else {
       _inputI = List.generate(
-        1,
-        (_) => List.generate(inH!, (_) => List.generate(inW!, (_) => List<int>.filled(3, 0))),
+        1, (_) => List.generate(inH!, (_) => List.generate(inW!, (_) => List<int>.filled(3, 0))),
       );
       _inputF = null;
     }
   }
 
-  // =============== Camera ===============
+  // ===== Camera =====
   Future<void> initializeCamera() async {
     final cameras = await availableCameras();
     cameraController = CameraController(
       cameras.first,
-      ResolutionPreset.low, // ปรับเป็น medium ได้ถ้าต้องการ
+      ResolutionPreset.low,
       imageFormatGroup: ImageFormatGroup.yuv420,
       enableAudio: false,
     );
@@ -186,12 +187,12 @@ class DetectionController extends GetxController {
   }
 
   Future<void> _startStream() async {
-    if (interpreter == null) {
+    if (_interp == null) {
       debugPrint('⚠️ Interpreter not ready');
       return;
     }
     try {
-      await cameraController.startImageStream(_onStreamFrame);
+      await cameraController.startImageStream(_onFrame);
       isStreaming.value = true;
     } catch (e) {
       debugPrint('⚠️ startImageStream failed: $e');
@@ -209,13 +210,10 @@ class DetectionController extends GetxController {
     isStreaming.value = false;
   }
 
-  // =============== Stream Callback ===============
-  Future<void> _onStreamFrame(CameraImage img) async {
-    if (_busy || interpreter == null || inW == null || inH == null || numDet == null) {
-      return;
-    }
+  // ===== Stream Callback =====
+  Future<void> _onFrame(CameraImage img) async {
+    if (_busy || _interp == null || inW == null || inH == null || numDet == null) return;
 
-    // frame skipper
     _frameIdx = (_frameIdx + 1) % processEveryN;
     if (_frameIdx != 0) return;
 
@@ -228,28 +226,21 @@ class DetectionController extends GetxController {
       imgW.value = img.width.toDouble();
       imgH.value = img.height.toDouble();
 
-      // 1) สร้าง mapping ครั้งเดียวต่อความละเอียด
       _ensureResizeMaps(img.width, img.height, inW!, inH!);
+      _fillInputFromYUV(img);
 
-      // 2) YUV420 → RGB + resize + เขียนลง input buffer โดยตรง
-      _fillPreallocatedInputFromYUV(img);
-
-      // 3) prepare output
       final output = _prepareOutput();
-
-      // 4) run
       final input = (_inputF != null) ? _inputF! : _inputI!;
-      interpreter!.run(input, output);
 
-      // 5) parse + filter + NMS
+      _interp!.run(input, output);
+
       final dets = _parseDetections(output);
       final filtered = _nms(
-        dets.where((d) => d.conf >= 0.5).toList(),
-        iouThresh: 0.45,
-        topK: 50,
+        dets.where((d) => d.conf >= confThresh).toList(),
+        iouThresh: iouThresh,
+        topK: topK,
       );
 
-      // 6) map bbox to camera size
       for (final d in filtered) {
         final xmin = (d.x - d.w / 2) * imgW.value;
         final ymin = (d.y - d.h / 2) * imgH.value;
@@ -261,9 +252,11 @@ class DetectionController extends GetxController {
         final rw = math.min(imgW.value, xmax) - rx;
         final rh = math.min(imgH.value, ymax) - ry;
 
-        final clsName = (d.cls >= 0 && d.cls < labels.length) ? labels[d.cls] : 'Unknown';
+        final idx = d.cls;
+        final clsName = (idx >= 0 && idx < labels.length) ? labels[idx] : 'Unknown';
 
         recognitions.add({
+          'clsIndex': idx, // << เลขคลาส (0=ripe, 1=unripe)
           'detectedClass': clsName,
           'confidenceInClass': d.conf,
           'rect': {'x': rx, 'y': ry, 'w': rw, 'h': rh},
@@ -275,6 +268,9 @@ class DetectionController extends GetxController {
           unripeCount.value++;
         }
       }
+
+      summaryText.value =
+          'พบปาล์มสุก ${ripeCount.value} | ปาล์มดิบ ${unripeCount.value} | รวม ${ripeCount.value + unripeCount.value}';
     } catch (e, st) {
       debugPrint('❌ Inference failed: $e\n$st');
     } finally {
@@ -282,19 +278,19 @@ class DetectionController extends GetxController {
     }
   }
 
-  // =============== Helpers ===============
+  // ===== Helpers =====
   void _ensureResizeMaps(int srcW, int srcH, int dstW, int dstH) {
     if (_srcW == srcW && _srcH == srcH && _mapX != null) return;
     _srcW = srcW; _srcH = srcH;
     _mapX  = List<int>.generate(dstW, (x) => ((x * srcW) / dstW).floor().clamp(0, srcW - 1));
     _mapY  = List<int>.generate(dstH, (y) => ((y * srcH) / dstH).floor().clamp(0, srcH - 1));
-    _mapXuv = List<int>.generate(dstW, (x) => (((_mapX![x]) >> 1)).clamp(0, (srcW >> 1) - 1));
-    _mapYuv = List<int>.generate(dstH, (y) => (((_mapY![y]) >> 1)).clamp(0, (srcH >> 1) - 1));
+    _mapXuv = List<int>.generate(dstW, (x) => ((_mapX![x]) >> 1).clamp(0, (srcW >> 1) - 1));
+    _mapYuv = List<int>.generate(dstH, (y) => ((_mapY![y]) >> 1).clamp(0, (srcH >> 1) - 1));
   }
 
-  // เขียนค่าเข้า input buffer โดยตรง (ไม่มีการสร้างรูปไว้เซฟ)
-  void _fillPreallocatedInputFromYUV(CameraImage cameraImage) {
-    final isFloat = _inputType == TensorType.float32 || _inputType == TensorType.float16;
+  // YUV420 → RGB + resize + (float/quant) เขียนลง buffer เดียว
+  void _fillInputFromYUV(CameraImage cameraImage) {
+    final isFloat = _inType == TensorType.float32 || _inType == TensorType.float16;
     final h = inH!, w = inW!;
 
     final pY = cameraImage.planes[0];
@@ -342,7 +338,7 @@ class DetectionController extends GetxController {
           final qR = (((R / 255.0) / _inScale) + _inZero).round();
           final qG = (((G / 255.0) / _inScale) + _inZero).round();
           final qB = (((B / 255.0) / _inScale) + _inZero).round();
-          if (_inputType == TensorType.int8) {
+          if (_inType == TensorType.int8) {
             _inputI![0][dy][dx][0] = qR.clamp(-128, 127);
             _inputI![0][dy][dx][1] = qG.clamp(-128, 127);
             _inputI![0][dy][dx][2] = qB.clamp(-128, 127);
@@ -357,7 +353,7 @@ class DetectionController extends GetxController {
   }
 
   Object _prepareOutput() {
-    final isFloat = _outputType == TensorType.float32 || _outputType == TensorType.float16;
+    final isFloat = _outType == TensorType.float32 || _outType == TensorType.float16;
     if (_layoutCHW) {
       return [ List.generate(6, (_) => isFloat
           ? List<double>.filled(numDet!, 0.0)
@@ -370,14 +366,14 @@ class DetectionController extends GetxController {
   }
 
   double _dq(num q) {
-    final isQuantOut = _outputType == TensorType.int8 || _outputType == TensorType.uint8;
+    final isQuantOut = _outType == TensorType.int8 || _outType == TensorType.uint8;
     if (isQuantOut) return _outScale * (q - _outZero);
     return q.toDouble();
   }
 
-  // Parse detections — supports raw (cx,cy,w,h) and NMS (x1,y1,x2,y2)
+  // Parse (รองรับทั้ง [1,6,N] และ [1,N,6], ทั้ง xywh กับ x1y1x2y2)
   List<_Det> _parseDetections(Object output) {
-    final isFloat = _outputType == TensorType.float32 || _outputType == TensorType.float16;
+    final isFloat = _outType == TensorType.float32 || _outType == TensorType.float16;
     final dets = <_Det>[];
 
     if (_layoutCHW) {
@@ -425,7 +421,6 @@ class DetectionController extends GetxController {
     return dets;
   }
 
-  // Simple per-class NMS
   List<_Det> _nms(List<_Det> dets, {double iouThresh = 0.45, int topK = 100}) {
     dets.sort((a, b) => b.conf.compareTo(a.conf));
     final keep = <_Det>[];

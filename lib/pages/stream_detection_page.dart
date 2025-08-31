@@ -131,84 +131,83 @@ class StreanDetectionPage extends GetView<DetectionController> {
               child: Stack(
                 children: [
                   Container(color: Pbgcolor),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 50),
-                    margin: const EdgeInsets.only(
-                      top: 0,
-                      left: 40,
-                      right: 40,
-                      bottom: 30,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Column(
-                      children: [
-                        Center(
-                          child: Padding(
-                            padding: EdgeInsets.only(top: 25, bottom: 15),
-                            child: Text(
-                              'ผลการวิเคราะห์',
-                              style: TextStyle(
-                                color: PBrown,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 25,
+                  Padding(
+                    padding: const EdgeInsets.only(top: 0, left: 40, right: 40, bottom: 30),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 50),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: SingleChildScrollView(
+                        physics: const ClampingScrollPhysics(),
+                        child: Column(
+                          children: [
+                            Center(
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: 25, bottom: 15),
+                                child: Text(
+                                  'ผลการวิเคราะห์',
+                                  style: TextStyle(
+                                    color: PBrown,
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 25,
+                                  ),
+                                ),
                               ),
                             ),
-                          ),
-                        ),
-                        const SizedBox(height: 1),
-                        _buildResultRow(
-                          'ผลปาล์มสุก',
-                          PGreen,
-                          controller.ripeCount.value, // ใช้ ripeCount
-                        ),
-                        const SizedBox(height: 10),
-                        _buildResultRow(
-                          'ผลปาล์มดิบ',
-                          PRed,
-                          controller.unripeCount.value, // ใช้ unripeCount
-                        ),
-                        GestureDetector(
-                          onTap: () => controller.toggleCamera(),
-                          child: Obx(
-                            () => Container(
-                              margin: EdgeInsets.symmetric(vertical: 25),
-                              // padding: EdgeInsets.symmetric(vertical: 10),
-                              width: 260,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: PBrown,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    controller.isCameraRunning.value
-                                        ? Icons.videocam_off
-                                        : Icons.videocam,
-                                    color: Colors.white,
+                            const SizedBox(height: 1),
+                            _buildResultRow(
+                              'ผลปาล์มสุก',
+                              PGreen,
+                              controller.ripeCount.value,
+                            ),
+                            const SizedBox(height: 10),
+                            _buildResultRow(
+                              'ผลปาล์มดิบ',
+                              PRed,
+                              controller.unripeCount.value,
+                            ),
+                            GestureDetector(
+                              onTap: () => controller.toggleCamera(),
+                              child: Obx(
+                                () => Container(
+                                  margin: const EdgeInsets.symmetric(vertical: 25),
+                                  width: 260,
+                                  height: 40,
+                                  decoration: BoxDecoration(
+                                    color: PBrown,
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
-                                  SizedBox(width: 10),
-                                  Text(
-                                    controller.isCameraRunning.value
-                                        ? 'STOP DETECT'
-                                        : 'START DETECT',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        controller.isCameraRunning.value
+                                            ? Icons.videocam_off
+                                            : Icons.videocam,
+                                        color: Colors.white,
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        controller.isCameraRunning.value
+                                            ? 'STOP DETECT'
+                                            : 'START DETECT',
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 20,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
                             ),
-                          ),
+                          ],
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ],
@@ -216,7 +215,6 @@ class StreanDetectionPage extends GetView<DetectionController> {
             ),
           ],
         ),
-        // : Center(child: CircularProgressIndicator()),
       ),
     );
   }
